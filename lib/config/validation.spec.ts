@@ -926,6 +926,10 @@ describe('config/validation', () => {
       expect(errors).toMatchInlineSnapshot(`
         [
           {
+            "message": "Invalid customManagers[0].customType: customType had a value \`"unknown"\` which was not part of the allowedValues: ["jsonata","regex"]",
+            "topic": "Configuration Error",
+          },
+          {
             "message": "Invalid customType: unknown. Key is not a custom manager",
             "topic": "Configuration Error",
           },
@@ -2904,6 +2908,100 @@ describe('config/validation', () => {
           topic: 'Configuration Error',
         },
       ]);
+    });
+
+    describe('allowedValues are validated', () => {
+      it('with repo config', async () => {
+        const config: Partial<RenovateConfig> = {
+          // for a single value
+          // @ts-expect-error: contains invalid values
+          mode: 'not-valid',
+          // for an array
+          postUpdateOptions: ['invalid', 'another'],
+          hostRules: [
+            {
+              // this is allowed, as it's the default value
+              artifactAuth: null,
+            },
+          ],
+          packageRules: [
+            // valid and a regex: versioning scheme
+            {
+              matchDepNames: ['/.*/'],
+              versioning: 'regex:^(?<major>1)',
+            },
+            // valid and part of allowedValues
+            {
+              matchDepNames: ['/.*/'],
+              versioning: 'maven',
+            },
+            // invalid, using an unknown option
+            {
+              matchDepNames: ['/.*/'],
+              versioning: 'not-ever-valid-scheme',
+            },
+          ],
+          bumpVersions: [
+            {
+              filePatterns: [],
+              matchStrings: [],
+              bumpType: '{{#if isPatch}}patch{{else}}minor{{/if}}',
+            },
+          ],
+        };
+        const { warnings, errors } = await configValidation.validateConfig(
+          'repo',
+          config,
+          true,
+        );
+        expect(warnings).toBeEmptyArray();
+        expect(errors).toMatchObject([
+          {
+            message:
+              'Invalid mode: mode had a value `"not-valid"` which was not part of the allowedValues: ["full","silent"]',
+            topic: 'Configuration Error',
+          },
+          {
+            message:
+              'Invalid packageRules[2].versioning: versioning had invalid value `"not-ever-valid-scheme"`. versioning can only be a known versioning scheme, or be a string starting with `regex:` for custom regular expression versioning',
+            topic: 'Configuration Error',
+          },
+          {
+            message:
+              'Invalid postUpdateOptions: postUpdateOptions had invalid values `["invalid","another"]` which are not part of the allowedValues: ["bundlerConservative","composerWithAll","composerNoMinimalChanges","dotnetWorkloadRestore","gomodMassage","gomodTidy","gomodTidy1.17","gomodTidyE","gomodUpdateImportPaths","gomodSkipVendor","gomodVendor","goGenerate","helmUpdateSubChartArchives","kustomizeInflateHelmCharts","npmDedupe","npmInstallTwice","pnpmDedupe","yarnDedupeFewer","yarnDedupeHighest"]',
+            topic: 'Configuration Error',
+          },
+        ]);
+      });
+
+      it('with global config', async () => {
+        const config: Partial<AllConfig> = {
+          // for a single value
+          // @ts-expect-error: contains invalid values
+          autodiscoverRepoOrder: 'middle-out',
+
+          // for an array
+          // @ts-expect-error: contains invalid values
+          allowedUnsafeExecutions: ['some', 'value'],
+
+          // TODO nested
+        };
+        const { warnings, errors } = await configValidation.validateConfig(
+          'global',
+          config,
+        );
+        expect(warnings).toBeEmptyArray();
+        expect(errors).toMatchObject([
+          {
+            message:
+              'Invalid allowedUnsafeExecutions: allowedUnsafeExecutions had invalid values `["some","value"]` which are not part of the allowedValues: ["bazelModDeps","goGenerate","gradleWrapper","mise"]',
+          },
+          {
+            message:
+              'Invalid autodiscoverRepoOrder: autodiscoverRepoOrder had a value `"middle-out"` which was not part of the allowedValues: ["asc","desc"]',
+          },
+        ]);
+      });
     });
 
     describe('cacheTtlOverride', () => {
